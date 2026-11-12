@@ -4,7 +4,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="007fe304-ae7d-4d85-ae77-bed5b29c05f5" name="Changes" comment="setup project" />
+    <list default="true" id="007fe304-ae7d-4d85-ae77-bed5b29c05f5" name="Changes" comment="setup project">
+      <change afterPath="$PROJECT_DIR$/modules/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sensors/Potentiometer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sensors/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/_Laboratory/Lab1.py" beforeDir="false" afterPath="$PROJECT_DIR$/_Laboratory/Lab1.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modules/Clock.py" beforeDir="false" afterPath="$PROJECT_DIR$/modules/Clock.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/Buzzer.py" beforeDir="false" afterPath="$PROJECT_DIR$/sensors/Buzzer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/LDR.py" beforeDir="false" afterPath="$PROJECT_DIR$/sensors/Ldr.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/Led.py" beforeDir="false" afterPath="$PROJECT_DIR$/sensors/Led.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/Potenziometro.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/Servo.py" beforeDir="false" afterPath="$PROJECT_DIR$/sensors/Servo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sensors/StepMotor.py" beforeDir="false" afterPath="$PROJECT_DIR$/sensors/StepMotor.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -20,6 +34,12 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "Manu-RS"
+  }
+}]]></component>
   <component name="GithubPullRequestsUISettings"><![CDATA[{
   "selectedUrlAndAccountId": {
     "url": "https://github.com/Manu-RS/ZenDock.git",
@@ -82,7 +102,15 @@
       <option name="project" value="LOCAL" />
       <updated>1794503263364</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="setup project">
+      <option name="closed" value="true" />
+      <created>1794503596247</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1794503596247</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">

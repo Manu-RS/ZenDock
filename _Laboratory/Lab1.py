@@ -1,5 +1,5 @@
-from sensors import StepMotor, Servo, Buzzer, Led, LDR, Potenziometro
-from machine import Pin, ADC
+from sensors import StepMotor, Servo, Buzzer, Led, Ldr, Potentiometer
+from machine import Pin
 import time
 
 # --- CONFIGURAZIONE PIN ---
@@ -11,19 +11,25 @@ PIN_STEPPER = [26, 25, 33, 32]
 PIN_BTN = 14
 PIN_BUZZER = 12
 
-# --- INIZIALIZZAZIONE OGGETTI ---
+# --- COSTANTI ---
+SOGLIA_MIN = 1000
+SOGLIA_MAX = 3000
+SOGLIA_BUIO_ALLARME = 500
+TEMPO_BUIO_ALLARME_MS = 5000
+DEBOUNCE_MS = 200
+STEPPER_DELAY_MS = 2
+STEPPER_TARGET_BUIO = 512
 
-fotoresistore = LDR(PIN_LDR, min_value=0, max_value=4095)
-potenziometro = Potenziometro(PIN_POT, "ADC.ATTN_11DB")
+# --- INIZIALIZZAZIONE OGGETTI ---
+fotoresistore = Ldr(PIN_LDR, min_value=0, max_value=4095)
+potenziometro = Potentiometer(PIN_POT)
 
 led = Led(PIN_LED, frequency=5000)
 servo = Servo(PIN_SERVO)
-
-stepper_pins = [Pin(p, Pin.OUT) for p in PIN_STEPPER]
-stepper = StepMotor(stepper_pins, delay=0.002, half=True)
+stepper = StepMotor(PIN_STEPPER, delay=STEPPER_DELAY_MS / 1000.0, half_step=True)
 
 button = Pin(PIN_BTN, Pin.IN, Pin.PULL_UP)
-buzzer = Buzzer(PIN_BUZZER, pDuty=0, pFreq=1000)
+buzzer = Buzzer(PIN_BUZZER, default_duty=512, default_freq=1000)
 
 # --- VARIABILI GLOBALI ---
 modalita = "AUTO"
@@ -32,174 +38,153 @@ modalita = "AUTO"
 luminosita = 0
 soglia = 0
 
-# Valori soglie potenziometro
-sogliaMin = 1000
-sogliaMax = 3000
-
 # Stato Stepper
 stepper_pos = 0
 stepper_target = 0
-stepper_last = 0
-stato_illuminazione_precedente = None 
+stepper_last_ms = 0
+stato_illuminazione_precedente = None
 
 # Stato Pulsante (Debouncing)
-last_press = 0
+last_press_ms = 0
 
 # Stato Buzzer e Allarme
-buzzer_inizio_fase = 0
-buzzer_durata_corrente = 0
-inizio_buio = 0
+inizio_buio_ms = 0
 allarme_emesso = False
-buzzer_sequenza = []
-buzzer_timeout = 0
+buzzer_coda = []
+buzzer_timeout_ms = 0
 
-ultimo_tempo_stampa = 0
+ultimo_tempo_stampa_ms = 0
 
 # --- FUNZIONI DI CONTROLLO ---
 
+# Legge la luminosità dall'LDR e la soglia dal Potentiometer
 def leggi_sensori():
-    global luminosita
-    global soglia
-    
-    luminosita = fotoresistore.read()
-    soglia = potenziometro.readByRange(sogliaMin, sogliaMax)
+    global luminosita, soglia
+
+    luminosita = fotoresistore.read_raw(samples=3)
+    soglia = Potentiometer.read_range(SOGLIA_MIN, SOGLIA_MAX, samples=3)
 
 
+# Regola l'intensità del LED in modalità automatica o manuale
 def controlla_led():
-    # Modalità AUTO
     if modalita == "AUTO":
         diff = soglia - luminosita
         if diff > 800:
-            led.setPercentage(100)
+            led.set_percentage(100)
         elif 400 <= diff <= 800:
-            led.setPercentage(70)
+            led.set_percentage(70)
         elif 100 <= diff < 400:
-            led.setPercentage(30)
+            led.set_percentage(30)
         else:
-            led.setPercentage(0)
-    # Modalità MANUAL
+            led.set_percentage(0)
     else:
-        percentuale = ((soglia - 1000) / 2000) * 100
-        led.setPercentage(max(0, min(100, int(percentuale))))
+        percentuale = ((soglia - SOGLIA_MIN) / (SOGLIA_MAX - SOGLIA_MIN)) * 100
+        led.set_percentage(max(0, min(100, int(percentuale))))
 
 
+# Muove gradualmente il servomotore di 5 gradi alla volta senza bloccare il ciclo
 def controlla_servo():
-    # Modalità AUTO
-    # controlla_servo() non impone al servo di andare subito all'angolo calcolato di 5 gradi in 5, bensì sposta avanti o dietro
-    # di 5 gradi in base a dove si trova e non blocca il resto del programma
-    # viene chiamato continuamente dal main, quindi si comporta come un ciclo ma non è bloccante
-    
-    if modalita == "AUTO":    
-        if luminosita < soglia:
-            degree = 0
-        elif luminosita > soglia and luminosita < (soglia+500):
-            degree = 45
-        elif luminosita > (soglia+500):
-            degree = 90
-            
-        if (servo.getCurrentDegree() < degree):
-            servo.setDegree(getCurrentDegree() + 5)
-        elif (servo.getCurrentDegree() > degree):
-            servo.setDegree(getCurrentDegree() - 5)
-            
-    # Modalità MANUAL
-    else:
-        servo.setDegree(90)
-
-
-def controlla_stepper():
-    global stepper_pos, stepper_target, stepper_last
-    global stato_illuminazione_precedente
-    
-    tempo_corrente = time.ticks_ms()
-    
     if modalita == "AUTO":
-        is_luminoso = (luminosita >= soglia)
+        if luminosita < soglia:
+            target_degree = 0
+        elif luminosita < (soglia + 500):
+            target_degree = 45
+        else:
+            target_degree = 90
+
+        current_degree = servo.get_degree()
+        if current_degree < target_degree:
+            servo.move_by(min(5, target_degree - current_degree))
+        elif current_degree > target_degree:
+            servo.move_by(-min(5, current_degree - target_degree))
+    else:
+        servo.move_center()
+
+
+# Gestisce il posizionamento non bloccante del motore passo-passo
+def controlla_stepper():
+    global stepper_pos, stepper_target, stepper_last_ms, stato_illuminazione_precedente
+
+    tempo_corrente = time.ticks_ms()
+
+    if modalita == "AUTO":
+        is_luminoso = luminosita >= soglia
         if is_luminoso != stato_illuminazione_precedente:
-            if not is_luminoso: 
-                stepper_posizione_target = 512
-            else:               
-                stepper_posizione_target = 0
+            stepper_target = 0 if is_luminoso else STEPPER_TARGET_BUIO
             stato_illuminazione_precedente = is_luminoso
 
-    if stepper_po != stepper_target:
-        if time.ticks_diff(tempo_corrente, stepper_last) >= 2:		# 2 è delay
-            direzione = 1 if stepper_target > stepper_pos else -1
-         
-            stepper.step(direzione, 1)    
+    if stepper_pos != stepper_target:
+        if time.ticks_diff(tempo_corrente, stepper_last_ms) >= STEPPER_DELAY_MS:
+            direzione = StepMotor.CW if stepper_target > stepper_pos else StepMotor.CCW
+            stepper.step(1, direction=direzione, auto_off=False)
             stepper_pos += direzione
-            stepper_last = tempo_corrente
-            
+            stepper_last_ms = tempo_corrente
+
             if stepper_pos == stepper_target:
-                stepper.turnOff()
+                stepper.turn_off()
 
 
-def gestisci_pulsante():
-    global last_press
-    global modalita
+# Gestisce la pressione del pulsante con antirimbalzo (compatibile con IRQ)
+def gestisci_pulsante(pin=None):
+    global last_press_ms, modalita
+
     current_time = time.ticks_ms()
-    
-    # Gestione del debounce
-    if time.ticks_diff(current_time, last_press) > 200:
-        last_press = current_time
-    
+    if time.ticks_diff(current_time, last_press_ms) > DEBOUNCE_MS:
+        last_press_ms = current_time
+
         if modalita == "AUTO":
             modalita = "MANUAL"
-            buzzer_sequenza.append((2000, 300)) 	# Un beep 2000 Hz 300ms
+            buzzer_coda.append((2000, 300))
         else:
             modalita = "AUTO"
-            buzzer_sequenza.extend([(1500, 100), (0, 50), (1500, 100)])		# Due beep 1500 Hz 100ms
+            buzzer_coda.extend([(1500, 100), (0, 50), (1500, 100)])
 
 
+# Gestisce l'allarme buio prolungato e riproduce la coda sonora in modo non bloccante
 def gestisci_buzzer():
-    global inizio_buio, allarme_emesso, buzzer_coda, buzzer_timeout
+    global inizio_buio_ms, allarme_emesso, buzzer_timeout_ms
+
     tempo_corrente = time.ticks_ms()
 
-    # Logica di allarme
+    # Logica di allarme se resta buio per oltre 5 secondi in modalità AUTO
     if modalita == "AUTO":
-        if luminosita < 500:
-            if inizio_buio == 0:
-                inizio_buio = tempo_corrente
-            elif time.ticks_diff(tempo_corrente, inizio_buio) >= 5000 and not allarme_emesso:
+        if luminosita < SOGLIA_BUIO_ALLARME:
+            if inizio_buio_ms == 0:
+                inizio_buio_ms = tempo_corrente
+            elif time.ticks_diff(tempo_corrente, inizio_buio_ms) >= TEMPO_BUIO_ALLARME_MS and not allarme_emesso:
                 buzzer_coda.extend([(800, 150), (0, 150)] * 3)
                 allarme_emesso = True
         else:
-            inizio_buio = 0
-            allarme_emesso = False 
-            
-    # Esecutore non bloccante della coda
-    if tempo_corrente >= buzzer_timeout:
+            inizio_buio_ms = 0
+            allarme_emesso = False
+
+    # Esecutore non bloccante della coda suoni tramite Timer hardware del Buzzer
+    if time.ticks_diff(tempo_corrente, buzzer_timeout_ms) >= 0:
         if buzzer_coda:
             freq, durata = buzzer_coda.pop(0)
             if freq > 0:
-                buzzer.pwm.freq(freq)
-                buzzer.pwm.duty(512)
+                buzzer.play_tone_async(durata, frequency=freq)
             else:
-                buzzer.pwm.duty(0)
-            buzzer_timeout = tempo_corrente + durata
-        else:
-            buzzer.pwm.duty(0)
+                buzzer.stop()
+            buzzer_timeout_ms = time.ticks_add(tempo_corrente, durata)
 
 
 # --- SETUP INIZIALE ---
-button.irq(trigger=Pin.IRQ_RISING, handler=gestisci_pulsante)
-buzzer.riproduciSuono(1000, 200, 512) # Un beep all'avvio
-buzzer.stop()
+button.irq(trigger=Pin.IRQ_FALLING, handler=gestisci_pulsante)
+buzzer.play_tone(200, frequency=1000)
 
 # --- MAIN LOOP ---
 while True:
     tempo_corrente = time.ticks_ms()
-    
+
     leggi_sensori()
-    gestisci_pulsante()
-    
     controlla_led()
     controlla_servo()
     controlla_stepper()
     gestisci_buzzer()
-    
-    if time.ticks_diff(tempo_corrente, ultimo_tempo_stampa) >= 1000:
+
+    if time.ticks_diff(tempo_corrente, ultimo_tempo_stampa_ms) >= 1000:
         print(f"Lum: {luminosita:.0f} | Soglia: {soglia:.0f} | Mod: {modalita}")
-        ultimo_tempo_stampa = tempo_corrente
-        
+        ultimo_tempo_stampa_ms = tempo_corrente
+
     time.sleep_ms(1)
